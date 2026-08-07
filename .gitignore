@@ -1,0 +1,35 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+frontend/node_modules/
+dist/
+
+# Generated embeddings
+embeddings/
+
+# Chroma vector database
+vector_store/chroma_db/
+
+# Generated dataset files
+datasets/knowledge_base.json
+datasets/chunked_knowledge_base.json
+datasets/cleaned_dataset.csv
+datasets/cleaned_dataset.json
+
+# Logs and results
+logs/
+results/
+
+# Environment
+.env
+
+# Hugging Face dataset cache
+datasets/**/*.arrow
+
+# Hugging Face downloaded datasets
+datasets/squad/
+datasets/truthfulqa/

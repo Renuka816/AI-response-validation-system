@@ -1,0 +1,39 @@
+.gradient-btn{
+
+    width:100%;
+
+    padding:18px;
+
+    border:none;
+
+    border-radius:18px;
+
+    background:linear-gradient(135deg,#2563eb,#7c3aed);
+
+    color:white;
+
+    font-size:20px;
+
+    font-weight:700;
+
+    cursor:pointer;
+
+    transition:.35s;
+
+}
+
+.gradient-btn:hover{
+
+    transform:translateY(-3px);
+
+    box-shadow:0 12px 30px rgba(59,130,246,.5);
+
+}
+
+.gradient-btn:disabled{
+
+    opacity:.7;
+
+    cursor:not-allowed;
+
+}

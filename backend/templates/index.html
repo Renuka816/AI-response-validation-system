@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AI Response Quality Evaluator</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+
+</head>
+
+<body>
+
+    <div class="container">
+
+        <h1>AI Response Quality Evaluator</h1>
+
+        <p class="subtitle">
+            Evaluate AI-generated responses using RAG and Multi-Agent Evaluation.
+        </p>
+
+        <form id="evaluationForm">
+
+            <!-- Question -->
+
+            <div class="form-group">
+
+                <label for="question">
+                    Question
+                </label>
+
+                <textarea
+                    id="question"
+                    rows="3"
+                    placeholder="Enter the user's question..."
+                    required></textarea>
+
+            </div>
+
+            <!-- AI Response -->
+
+            <div class="form-group">
+
+                <label for="response">
+                    AI Response
+                </label>
+
+                <textarea
+                    id="response"
+                    rows="5"
+                    placeholder="Paste the AI generated response..."
+                    required></textarea>
+
+            </div>
+
+            <!-- Reference Answer -->
+
+            <div class="form-group">
+
+                <label for="reference">
+                    Reference Answer (Optional)
+                </label>
+
+                <textarea
+                    id="reference"
+                    rows="3"
+                    placeholder="Enter reference answer (optional)..."></textarea>
+
+            </div>
+
+            <!-- Source Document -->
+
+            <div class="form-group">
+
+                <label for="source">
+                    Source Document (Optional)
+                </label>
+
+                <textarea
+                    id="source"
+                    rows="3"
+                    placeholder="Paste source/context (optional)..."></textarea>
+
+            </div>
+
+            <!-- Buttons -->
+
+            <div class="button-group">
+
+                <button
+                    type="submit"
+                    class="evaluate-btn">
+
+                    Evaluate
+
+                </button>
+
+                <button
+                    type="reset"
+                    class="reset-btn">
+
+                    Reset
+
+                </button>
+
+            </div>
+
+        </form>
+
+        <!-- Backend Response -->
+
+        <div id="resultBox">
+
+        </div>
+
+    </div>
+
+    <script src="/static/js/script.js"></script>
+
+</body>
+
+</html>
