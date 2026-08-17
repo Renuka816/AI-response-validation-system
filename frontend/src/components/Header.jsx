@@ -16,12 +16,9 @@ export default function Header() {
 
       <div className="title-section">
 
-        <h1>AI Response Quality Evaluator</h1>
+        <h1>AI Response Validation System</h1>
 
-        <p>
-          Evaluate AI-generated responses using
-          RAG-based Multi-Agent Evaluation.
-        </p>
+        <p>Hallucination Detection & Response Evaluation</p>
 
       </div>
 

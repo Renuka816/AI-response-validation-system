@@ -4,8 +4,10 @@ import { useState } from "react";
 
 import Header from "../components/Header";
 
-export default function BatchEvaluator({ goBack }) {
-
+export default function BatchEvaluator({
+  goBack,
+  goToDashboard
+}) {
   const [file, setFile] = useState(null);
 
 
@@ -45,8 +47,28 @@ const [expandedCard, setExpandedCard] = useState(null);
         alert("Batch Evaluation Failed.");
 
     }
+  };
 
-};
+  const downloadPDFReport = async () => {
+    try {
+      const response = await API.get("/dashboard/report/pdf", {
+        params: { evaluation_mode: "batch" },
+        responseType: "blob"
+      });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "Batch_Evaluation_Report.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to download PDF report.");
+    }
+  };
 
   return (
     <div className="app">
@@ -70,6 +92,22 @@ const [expandedCard, setExpandedCard] = useState(null);
         >
           ← Back to Single Evaluation
         </button>
+
+        <button
+  onClick={goToDashboard}
+  style={{
+    background: "none",
+    border: "none",
+    color: "#8b5cf6",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "15px",
+    marginBottom: "30px",
+    marginLeft: "20px"
+  }}
+>
+  📊 Dashboard →
+</button>
 
         {/* Page Content */}
         <div
@@ -137,17 +175,36 @@ const [expandedCard, setExpandedCard] = useState(null);
 
 <div style={{ width: "100%", marginTop: "45px" }}>
 
-  <h2
-    style={{
-      color: "#fff",
-      textAlign: "center",
-      marginBottom: "30px",
-      fontSize: "28px",
-      fontWeight: "700",
-    }}
-  >
-    📊 Batch Evaluation Summary
-  </h2>
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px", flexWrap: "wrap", gap: "15px" }}>
+    <h2
+      style={{
+        color: "#fff",
+        fontSize: "28px",
+        fontWeight: "700",
+        margin: 0
+      }}
+    >
+      📊 Batch Evaluation Summary
+    </h2>
+
+    <button
+      onClick={downloadPDFReport}
+      style={{
+        padding: "12px 24px",
+        borderRadius: "12px",
+        border: "none",
+        background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+        color: "white",
+        fontWeight: "600",
+        fontSize: "15px",
+        cursor: "pointer",
+        boxShadow: "0 4px 14px rgba(16, 185, 129, 0.4)",
+        transition: "0.3s"
+      }}
+    >
+      📥 Export Batch PDF Report
+    </button>
+  </div>
 
   {/* Summary Cards */}
 
@@ -318,9 +375,9 @@ gap:"15px"
 
 <div className="mini-score">
 
-<span>Accuracy</span>
+  <span>Accuracy</span>
 
-<h3>{item.knowledge_score}</h3>
+  <h3>{item.accuracy_score}</h3>
 
 </div>
 

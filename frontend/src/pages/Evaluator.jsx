@@ -9,9 +9,10 @@ import SummaryCard from "../components/SummaryCard";
 import AgentCard from "../components/AgentCard";
 import VerdictCard from "../components/VerdictCard";
 
-export default function Evaluator({ goToBatch }) {
+export default function Evaluator({ goToBatch, goToDashboard }) {
   const [question, setQuestion] = useState("");
   const [response, setResponse] = useState("");
+  const [model, setModel] = useState("GPT-4o");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -27,6 +28,7 @@ export default function Evaluator({ goToBatch }) {
   const res = await API.post("/evaluate", {
   question,
   response,
+  model,
   reference_answer: "",
   source_document: "",
 });
@@ -132,6 +134,24 @@ console.log("Current Result:", result);
   📂 Batch Evaluation →
 </button>
 
+<button
+  onClick={goToDashboard}
+  style={{
+    width: "100%",
+    marginTop: "12px",
+    padding: "14px",
+    border: "none",
+    borderRadius: "12px",
+    background: "#2f3547",
+    color: "white",
+    fontWeight: "600",
+    fontSize: "16px",
+    cursor: "pointer"
+  }}
+>
+  📊 Evaluation Dashboard →
+</button>
+
 
       </div>
 
@@ -146,9 +166,8 @@ console.log("Current Result:", result);
 <AgentCard
   icon="🎯"
   title="Accuracy Agent"
-  score={result?.knowledge?.knowledge_score}
-  confidence={result?.knowledge?.confidence}
-  reason={result?.knowledge?.reason}
+  score={result?.accuracy?.accuracy_score}
+  reason={result?.accuracy?.reason}
 />
 
       <AgentCard

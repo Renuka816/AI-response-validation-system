@@ -1,0 +1,6 @@
+question,response,model,dataset
+"What causes malaria?","Malaria is caused by Plasmodium parasites that are transmitted to people through the bites of infected female Anopheles mosquitoes. Early symptoms include fever, chills, and headache.","GPT-4o (System A)","Comparative AI Benchmark"
+"What is photosynthesis?","Photosynthesis is the process used by plants, algae, and certain bacteria to synthesize nutrients from carbon dioxide and water using sunlight energy, producing oxygen as a byproduct.","GPT-4o (System A)","Comparative AI Benchmark"
+"What causes tuberculosis?","Tuberculosis is caused by Mycobacterium tuberculosis bacteria that spread through airborne microscopic droplets released when a person with active TB coughs or sneezes.","GPT-4o (System A)","Comparative AI Benchmark"
+"How does insulin regulate blood glucose?","Insulin facilitates the uptake of glucose into cells, particularly muscle and adipose tissue, and signals the liver to store excess glucose as glycogen, thereby lowering blood sugar.","GPT-4o (System A)","Comparative AI Benchmark"
+"What is the function of the human heart?","The human heart pumps blood throughout the cardiovascular system, delivering oxygen and nutrients to tissues and removing carbon dioxide and metabolic wastes.","GPT-4o (System A)","Comparative AI Benchmark"

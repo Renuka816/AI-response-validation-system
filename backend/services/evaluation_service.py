@@ -1,123 +1,121 @@
 from backend.services.rag_service import retrieve_documents
-from backend.services.knowledge_agent import KnowledgeAgent
+
+from backend.services.accuracy_agent import AccuracyAgent
 from backend.services.hallucination_agent import HallucinationAgent
 from backend.services.completeness_agent import CompletenessAgent
-from backend.services.scoring_service import ScoringService
 from backend.services.relevance_agent import RelevanceJudgeAgent
+
+from backend.services.scoring_service import ScoringService
 
 from backend.utils.helper import get_current_timestamp
 from backend.utils.logger import logger
 
-from backend.data.reference_answers import REFERENCE_ANSWERS
-
 
 class EvaluationService:
 
-    # -----------------------------------------
-    # Reference Answer Mapping
-    # -----------------------------------------
-    @staticmethod
-    def get_reference_answer(question):
-        q = question.lower()
+    # =========================================================
+    # MAIN EVALUATION
+    # =========================================================
 
-        if "photosynthesis" in q:
-            return REFERENCE_ANSWERS["photosynthesis"]
-
-        elif "artificial intelligence" in q:
-            return REFERENCE_ANSWERS["artificial intelligence"]
-
-        elif "telephone" in q:
-            return REFERENCE_ANSWERS["telephone"]
-
-        elif "water cycle" in q:
-            return REFERENCE_ANSWERS["water cycle"]
-
-        elif "machine learning" in q:
-            return REFERENCE_ANSWERS["machine learning"]
-
-        elif "malaria" in q:
-            return REFERENCE_ANSWERS["malaria"]
-
-        return None
-
-    # -----------------------------------------
-    # Main Evaluation
-    # -----------------------------------------
     @staticmethod
     def process_request(request):
 
         logger.info("Evaluation Started")
 
-        # -----------------------------------------
-        # Retrieve Supporting Documents
-        # -----------------------------------------
-        retrieved_docs = retrieve_documents(request.question)
+        # =====================================================
+        # 1. RAG RETRIEVAL
+        # =====================================================
 
-        # -----------------------------------------
-        # Knowledge Evaluation (IMPROVED)
-        # -----------------------------------------
-        reference = EvaluationService.get_reference_answer(request.question)
+        retrieved_docs = retrieve_documents(
+            request.question
+        )
 
-        if reference:
-            knowledge_result = KnowledgeAgent.evaluate(
-    request.response,
-    [{"context": reference}]
-)
-        else:
-            knowledge_result = KnowledgeAgent.evaluate(
-                request.response,
-                retrieved_docs
-            )
+        # =====================================================
+        # 2. ACCURACY EVALUATION
+        # =====================================================
+        #
+        # The LLM receives:
+        #
+        # QUESTION
+        # AI RESPONSE
+        # RETRIEVED EVIDENCE
+        #
+        # No hard-coded question/reference mapping is used.
+        #
 
-        # -----------------------------------------
-        # Hallucination Evaluation
-        # -----------------------------------------
+        accuracy_result = AccuracyAgent.evaluate(
+            question=request.question,
+            response=request.response,
+            documents=retrieved_docs,
+            model_name="gpt-4o"
+        )
+
+        # =====================================================
+        # 3. HALLUCINATION EVALUATION
+        # =====================================================
+
         hallucination_result = HallucinationAgent.evaluate(
             request.response,
             retrieved_docs
         )
 
-        # -----------------------------------------
-        # Relevance Evaluation
-        # -----------------------------------------
+        # =====================================================
+        # 4. RELEVANCE EVALUATION
+        # =====================================================
+
         relevance_result = RelevanceJudgeAgent.evaluate(
             question=request.question,
             response=request.response,
             retrieved_docs=retrieved_docs
         )
 
-        # -----------------------------------------
-        # Completeness Evaluation
-        # -----------------------------------------
+        # =====================================================
+        # 5. COMPLETENESS EVALUATION
+        # =====================================================
+
         completeness_result = CompletenessAgent.evaluate(
             request.question,
             request.response,
             retrieved_docs
         )
 
-        # -----------------------------------------
-        # Final Score (FIXED ARGUMENTS)
-        # -----------------------------------------
+        # =====================================================
+        # 6. FINAL SCORE
+        # =====================================================
+
         final_result = ScoringService.calculate_final_score(
-            knowledge_result["knowledge_score"],
-            hallucination_result["hallucination_score"],  # ✅ FIXED
+            accuracy_result["accuracy_score"],
+            hallucination_result["hallucination_score"],
             relevance_result["relevance_score"],
             completeness_result["completeness_score"]
         )
 
         logger.info("Evaluation Completed")
 
-        # -----------------------------------------
-        # Return Response
-        # -----------------------------------------
+        # =====================================================
+        # 7. RETURN COMPLETE EVALUATION
+        # =====================================================
+
         return {
+
             "question": request.question,
+
             "response": request.response,
+
             "timestamp": get_current_timestamp(),
+
+            # RAG evidence
             "retrieved_documents": retrieved_docs,
-            "knowledge": knowledge_result,
+
+            # Individual agents
+            "accuracy": accuracy_result,
+
             "hallucination": hallucination_result,
+
             "relevance": relevance_result,
+
             "completeness": completeness_result,
+
+            # Final verdict
             "final_result": final_result
         }

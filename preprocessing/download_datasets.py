@@ -10,7 +10,7 @@ Datasets:
 1. SQuAD
 2. TruthfulQA
 
-Author: AI Response Quality Evaluator Project
+Author: Renuka Meesala
 """
 
 from pathlib import Path

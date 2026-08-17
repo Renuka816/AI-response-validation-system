@@ -32,3 +32,15 @@ class EvaluationRequest(BaseModel):
         title="Source Document",
         description="Optional source document or context"
     )
+
+    model: Optional[str] = Field(
+        default="GPT-4o",
+        title="AI Model Name",
+        description="Name of the AI model being evaluated"
+    )
+
+    dataset: Optional[str] = Field(
+        default="Single Query",
+        title="Dataset Name",
+        description="Name of the dataset origin"
+    )
