@@ -33,3 +33,5 @@ datasets/**/*.arrow
 # Hugging Face downloaded datasets
 datasets/squad/
 datasets/truthfulqa/
+
+docs/
