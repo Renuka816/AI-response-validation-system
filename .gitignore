@@ -12,6 +12,7 @@ dist/
 embeddings/
 
 # Chroma vector database
+
 vector_store/chroma_db/
 
 # Generated dataset files
