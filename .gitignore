@@ -36,3 +36,9 @@ datasets/squad/
 datasets/truthfulqa/
 
 docs/
+
+
+venv/
+__pycache__/
+.env
+node_modules/
