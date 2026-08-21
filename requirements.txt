@@ -20,7 +20,6 @@ scikit-learn==1.5.2
 # Hugging Face
 # ============================
 transformers==4.45.2
-datasets==3.0.1
 sentence-transformers==3.2.1
 
 # ============================
@@ -29,17 +28,18 @@ sentence-transformers==3.2.1
 chromadb==0.5.5
 
 # ============================
-# Torch
+# PyTorch
 # ============================
 torch==2.4.1
-torchvision==0.19.1
-torchaudio==2.4.1
 
 # ============================
 # Utilities
 # ============================
 requests==2.32.3
 tqdm==4.66.5
+
+# ============================
+# LLM APIs
+# ============================
 openai
 anthropic
-python-dotenv
