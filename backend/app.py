@@ -1,13 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from dotenv import load_dotenv
-
-# Import Routes
-from backend.routes.evaluation import router as evaluation_router
-from backend.routes.batch_evaluation import router as batch_router
-from backend.routes import dashboard
-from backend.database.database import init_database
 
 # ============================
 # Load Environment Variables
@@ -17,10 +10,21 @@ load_dotenv()
 
 
 # ============================
+# Import Routes
+# ============================
+
+from backend.routes.evaluation import router as evaluation_router
+from backend.routes.batch_evaluation import router as batch_router
+from backend.routes import dashboard
+from backend.database.database import init_database
+
+
+# ============================
 # Initialize Database
 # ============================
 
 init_database()
+
 
 # ============================
 # Create FastAPI App
@@ -28,7 +32,10 @@ init_database()
 
 app = FastAPI(
     title="AI Response Validation System",
-    description="Development of AI Response Validation System with Hallucination Detection Assistance (Group 1)",
+    description=(
+        "Development of AI Response Validation System "
+        "with Hallucination Detection Assistance (Group 1)"
+    ),
     version="1.0.0"
 )
 
@@ -37,9 +44,15 @@ app = FastAPI(
 # Enable CORS
 # ============================
 
+origins = [
+    "https://ai-response-validation-system.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,7 +65,6 @@ app.add_middleware(
 
 @app.get("/")
 async def home():
-
     return {
         "message": "AI Response Quality Evaluator API is running."
     }
@@ -81,7 +93,7 @@ app.include_router(
 
 
 # ============================
-# Register Dashboard
+# Register Dashboard Routes
 # ============================
 
 app.include_router(
