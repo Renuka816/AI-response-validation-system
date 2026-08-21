@@ -1,30 +1,24 @@
-import os
-import time
-import requests
+from sentence_transformers import SentenceTransformer
 
 
 # ============================
-# Hugging Face Configuration
+# Local Embedding Model
 # ============================
 
-HF_TOKEN = os.getenv("HF_TOKEN")
+MODEL_NAME = "all-MiniLM-L6-v2"
 
-# Hugging Face Inference API endpoint
-API_URL = (
-    "https://api-inference.huggingface.co/"
-    "models/sentence-transformers/all-MiniLM-L6-v2"
-)
+print("Loading local embedding model...")
 
-headers = {
-    "Authorization": f"Bearer {HF_TOKEN}"
-} if HF_TOKEN else {}
+model = SentenceTransformer(MODEL_NAME)
+
+print("Local embedding model loaded.")
 
 
 # ============================
-# Lightweight Embedding Model
+# Embedding Model
 # ============================
 
-class LightweightEmbeddingModel:
+class LocalEmbeddingModel:
 
     def encode(
         self,
@@ -34,63 +28,19 @@ class LightweightEmbeddingModel:
         convert_to_tensor=False
     ):
 
-        # Check whether input is a single string
-        is_single_string = isinstance(sentences, str)
-
-        # Convert single text into list
-        input_data = [sentences] if is_single_string else list(sentences)
-
-        try:
-
-            # Call Hugging Face API
-            response = requests.post(
-                API_URL,
-                headers=headers,
-                json={
-                    "inputs": input_data
-                },
-                timeout=30
-            )
-
-            # Model might be loading
-            if response.status_code == 503:
-
-                time.sleep(5)
-
-                response = requests.post(
-                    API_URL,
-                    headers=headers,
-                    json={
-                        "inputs": input_data
-                    },
-                    timeout=30
-                )
-
-            # Successful response
-            if response.status_code == 200:
-
-                result = response.json()
-
-                return result
-
-            # API error
-            raise RuntimeError(
-                f"Hugging Face API failed: "
-                f"{response.status_code} - {response.text}"
-            )
-
-        except requests.exceptions.RequestException as e:
-
-            raise RuntimeError(
-                f"Embedding Generation Error: {str(e)}"
-            )
+        return model.encode(
+            sentences,
+            batch_size=batch_size,
+            show_progress_bar=show_progress_bar,
+            convert_to_tensor=convert_to_tensor
+        )
 
 
 # ============================
-# Create Global Model Instance
+# Global Model
 # ============================
 
-model = LightweightEmbeddingModel()
+local_model = LocalEmbeddingModel()
 
 
 # ============================
@@ -99,7 +49,7 @@ model = LightweightEmbeddingModel()
 
 def get_embedding_model():
 
-    return model
+    return local_model
 
 
 # ============================
@@ -110,14 +60,12 @@ class EmbeddingService:
 
     def __init__(self):
 
-        self.model = model
-
+        self.model = local_model
 
     @staticmethod
     def get_model():
 
-        return model
-
+        return local_model
 
     def get_embeddings(self, text):
 

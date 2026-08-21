@@ -1,7 +1,6 @@
 from pathlib import Path
 import chromadb
-
-from backend.services.embedding_service import EmbeddingService
+from sentence_transformers import SentenceTransformer
 
 
 # --------------------------------------------------
@@ -10,7 +9,11 @@ from backend.services.embedding_service import EmbeddingService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-CHROMA_DB_PATH = PROJECT_ROOT / "vector_store" / "chroma_db"
+CHROMA_DB_PATH = (
+    PROJECT_ROOT
+    / "vector_store"
+    / "chroma_db_small"
+)
 
 
 # --------------------------------------------------
@@ -23,7 +26,7 @@ _collection = None
 
 
 # --------------------------------------------------
-# Load embedding model only when required
+# Load LOCAL embedding model
 # --------------------------------------------------
 
 def get_model():
@@ -31,15 +34,20 @@ def get_model():
     global _model
 
     if _model is None:
-        print("Loading embedding model...")
-        _model = EmbeddingService.get_model()
-        print("Embedding model loaded.")
+
+        print("Loading LOCAL embedding model...")
+
+        _model = SentenceTransformer(
+            "all-MiniLM-L6-v2"
+        )
+
+        print("Local embedding model loaded.")
 
     return _model
 
 
 # --------------------------------------------------
-# Connect to ChromaDB only when required
+# Connect to ChromaDB
 # --------------------------------------------------
 
 def get_collection():
@@ -73,18 +81,23 @@ def retrieve_documents(
     top_k: int = 5
 ):
 
-    # Load model only when retrieval is requested
     model = get_model()
 
-    # Connect to ChromaDB only when retrieval is requested
     collection = get_collection()
 
+    # ----------------------------------------------
     # Create query embedding
+    # ----------------------------------------------
+
     query_embedding = model.encode(
-        question
+        question,
+        convert_to_numpy=True
     ).tolist()
 
+    # ----------------------------------------------
     # Search ChromaDB
+    # ----------------------------------------------
+
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k

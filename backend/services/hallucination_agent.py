@@ -1,7 +1,6 @@
 from sklearn.metrics.pairwise import cosine_similarity
-from backend.services.embedding_service import EmbeddingService
 
-model = EmbeddingService.get_model()
+from backend.services.embedding_service import EmbeddingService
 
 
 class HallucinationAgent:
@@ -9,24 +8,47 @@ class HallucinationAgent:
     @staticmethod
     def evaluate(ai_response: str, retrieved_documents: list):
 
+        # =========================================================
+        # No retrieved evidence
+        # =========================================================
+
         if not retrieved_documents:
+
             return {
-                "hallucination_score": 0,
+                "hallucination_score": 0.0,
                 "hallucinated": False,
                 "status": "General Knowledge Grounded",
                 "supported_claims": 1,
                 "unsupported_claims": 0,
-                "evidence": "General knowledge evaluation.",
-                "reason": "Evaluated using general knowledge and logical reasoning; no hallucination detected."
+                "evidence": "No retrieved evidence was available.",
+                "reason": (
+                    "No relevant retrieval evidence was available. "
+                    "The response was evaluated using general knowledge."
+                )
             }
 
+        # =========================================================
+        # Load local embedding model
+        # =========================================================
+
+        model = EmbeddingService.get_model()
+
         response_embedding = model.encode(ai_response)
+
+        # =========================================================
+        # Compare response against retrieved evidence
+        # =========================================================
 
         similarities = []
 
         for document in retrieved_documents:
 
-            context_embedding = model.encode(document["context"])
+            context = document.get("context", "")
+
+            if not context.strip():
+                continue
+
+            context_embedding = model.encode(context)
 
             similarity = cosine_similarity(
                 [response_embedding],
@@ -35,53 +57,141 @@ class HallucinationAgent:
 
             similarities.append(similarity)
 
-        best_similarity = max(similarities) if similarities else 0.0
+        # No usable documents
+        if not similarities:
 
-        # If retrieved RAG docs have negligible relevance to the question (< 25% similarity),
-        # do not penalize general knowledge or arithmetic responses as hallucinated!
-        if best_similarity < 0.25:
             return {
-                "hallucination_score": 0,
+                "hallucination_score": 0.0,
                 "hallucinated": False,
                 "status": "General Knowledge Grounded",
                 "supported_claims": 1,
                 "unsupported_claims": 0,
-                "evidence": f"No relevant RAG context required (Similarity: {round(best_similarity * 100, 2)}%).",
-                "reason": "Evaluated using general knowledge & factual reasoning; no hallucination detected."
+                "evidence": "No usable retrieved context.",
+                "reason": (
+                    "The retrieved documents did not contain usable "
+                    "evidence, so the response was not penalized."
+                )
             }
 
-        hallucination_score = round((1 - best_similarity) * 100, 2)
-        hallucination_score = max(0, min(100, hallucination_score))
+        best_similarity = max(similarities)
 
-        # ---------- Extra Details ----------
-        if hallucination_score < 20:
-            status = "Well Supported"
-            supported_claims = 5
-            unsupported_claims = 0
+        similarity_percent = round(
+            best_similarity * 100,
+            2
+        )
 
-        elif hallucination_score < 40:
-            status = "Mostly Supported"
-            supported_claims = 4
-            unsupported_claims = 1
+        # =========================================================
+        # IMPORTANT:
+        # Weak evidence should NOT automatically mean hallucination.
+        # =========================================================
 
-        elif hallucination_score < 60:
+        if best_similarity < 0.40:
+
+            return {
+                "hallucination_score": 0.0,
+                "hallucinated": False,
+                "status": "General Knowledge Grounded",
+                "supported_claims": 1,
+                "unsupported_claims": 0,
+                "evidence": (
+                    f"Retrieved evidence had low semantic support "
+                    f"({similarity_percent}%)."
+                ),
+                "reason": (
+                    "The retrieved documents were not sufficiently "
+                    "relevant to verify the response. Therefore, "
+                    "the response was not classified as hallucinated."
+                )
+            }
+
+        # =========================================================
+        # Strong evidence
+        # =========================================================
+
+        if best_similarity >= 0.70:
+
+            return {
+                "hallucination_score": 0.0,
+                "hallucinated": False,
+                "status": "Well Supported",
+                "supported_claims": 5,
+                "unsupported_claims": 0,
+                "evidence": (
+                    f"Strong semantic support from retrieved knowledge "
+                    f"({similarity_percent}%)."
+                ),
+                "reason": (
+                    "The response is strongly supported by the "
+                    "retrieved knowledge."
+                )
+            }
+
+        # =========================================================
+        # Moderate evidence
+        # =========================================================
+
+        if best_similarity >= 0.55:
+
+            hallucination_score = round(
+                (1 - best_similarity) * 50,
+                2
+            )
+
+            return {
+                "hallucination_score": hallucination_score,
+                "hallucinated": False,
+                "status": "Mostly Supported",
+                "supported_claims": 4,
+                "unsupported_claims": 1,
+                "evidence": (
+                    f"Moderate semantic support from retrieved "
+                    f"knowledge ({similarity_percent}%)."
+                ),
+                "reason": (
+                    "The response has reasonable support from "
+                    "the retrieved knowledge, although some claims "
+                    "could not be directly verified."
+                )
+            }
+
+        # =========================================================
+        # Partial evidence
+        # =========================================================
+
+        hallucination_score = round(
+            (1 - best_similarity) * 100,
+            2
+        )
+
+        hallucination_score = max(
+            0,
+            min(100, hallucination_score)
+        )
+
+        if hallucination_score < 40:
+
             status = "Partially Supported"
+            hallucinated = False
             supported_claims = 3
             unsupported_claims = 2
 
+            reason = (
+                "The response is partially supported by the "
+                "retrieved knowledge, but some claims require "
+                "additional verification."
+            )
+
         else:
-            status = "Hallucinated"
+
+            status = "Potentially Hallucinated"
+            hallucinated = True
             supported_claims = 1
             unsupported_claims = 4
 
-        evidence = f"Best semantic similarity with retrieved knowledge: {round(best_similarity * 100,2)}%"
-
-        if hallucination_score > 40:
-            hallucinated = True
-            reason = "The response contains information weakly supported by the retrieved knowledge."
-        else:
-            hallucinated = False
-            reason = "The response is largely supported by the retrieved knowledge."
+            reason = (
+                "The response has weak support from the available "
+                "retrieved knowledge and may contain unsupported claims."
+            )
 
         return {
             "hallucination_score": hallucination_score,
@@ -89,6 +199,9 @@ class HallucinationAgent:
             "status": status,
             "supported_claims": supported_claims,
             "unsupported_claims": unsupported_claims,
-            "evidence": evidence,
+            "evidence": (
+                f"Best semantic similarity with retrieved knowledge: "
+                f"{similarity_percent}%"
+            ),
             "reason": reason
         }

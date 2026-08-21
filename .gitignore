@@ -1,44 +1,64 @@
+# =========================
 # Python
+# =========================
 venv/
 __pycache__/
 *.pyc
+*.pyo
 
-# Node
+# =========================
+# Node / Frontend
+# =========================
 node_modules/
 frontend/node_modules/
+frontend/dist/
 dist/
 
-# Generated embeddings
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Generated Embeddings
+# =========================
 embeddings/
 
-# Chroma vector database
-
+# =========================
+# ChromaDB
+# =========================
 vector_store/chroma_db/
+vector_store/chroma_db_small/
 
-# Generated dataset files
+# =========================
+# Generated Datasets
+# =========================
 datasets/knowledge_base.json
 datasets/chunked_knowledge_base.json
 datasets/cleaned_dataset.csv
 datasets/cleaned_dataset.json
-
-# Logs and results
-logs/
-results/
-
-# Environment
-.env
-
-# Hugging Face dataset cache
 datasets/**/*.arrow
-
-# Hugging Face downloaded datasets
 datasets/squad/
 datasets/truthfulqa/
 
-docs/
+# =========================
+# Database
+# =========================
+backend/database/evaluations.db
 
+# =========================
+# Logs / Results
+# =========================
+logs/
+results/
 
-venv/
-__pycache__/
-.env
-node_modules/
+# =========================
+# OS / IDE
+# =========================
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
