@@ -10,11 +10,7 @@ from backend.utils.embedding_model import get_embedding_model
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-CHROMA_DB_PATH = (
-    PROJECT_ROOT
-    / "vector_store"
-    / "chroma_db_small"
-)
+CHROMA_DB_PATH = PROJECT_ROOT / "vector_store" / "chroma_db_small"
 
 
 # --------------------------------------------------
@@ -36,11 +32,11 @@ def get_model():
 
     if _model is None:
 
-        print("Loading remote embedding service...")
+        print("Loading embedding model...")
 
         _model = get_embedding_model()
 
-        print("Remote embedding service ready.")
+        print("Embedding model ready.")
 
     return _model
 
@@ -57,16 +53,45 @@ def get_collection():
     if _collection is None:
 
         print("Connecting to ChromaDB...")
+        print("Chroma path:", CHROMA_DB_PATH)
+        print("Chroma path exists:", CHROMA_DB_PATH.exists())
+
+        if not CHROMA_DB_PATH.exists():
+            raise RuntimeError(
+                f"ChromaDB path does not exist: {CHROMA_DB_PATH}"
+            )
+
+        sqlite_file = CHROMA_DB_PATH / "chroma.sqlite3"
+
+        print("SQLite exists:", sqlite_file.exists())
 
         _client = chromadb.PersistentClient(
             path=str(CHROMA_DB_PATH)
         )
 
-        _collection = _client.get_collection(
-            "knowledge_base"
-        )
+        collections = _client.list_collections()
+
+        print("RENDER CHROMA COLLECTIONS:", collections)
+
+        if not collections:
+            raise RuntimeError(
+                "ChromaDB loaded successfully, but no collections were found."
+            )
+
+        try:
+            _collection = _client.get_collection(
+                name="knowledge_base"
+            )
+
+        except Exception as e:
+
+            raise RuntimeError(
+                f"Collection 'knowledge_base' does not exist. "
+                f"Available collections: {collections}"
+            ) from e
 
         print("Connected to ChromaDB.")
+        print("Collection count:", _collection.count())
 
     return _collection
 
