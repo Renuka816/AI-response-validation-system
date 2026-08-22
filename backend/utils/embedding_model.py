@@ -1,22 +1,58 @@
-from sentence_transformers import SentenceTransformer
+import os
+import requests
+import time
 
 
 # --------------------------------------------------
-# Load LOCAL embedding model
+# Configuration
 # --------------------------------------------------
 
-print("Loading LOCAL embedding model...")
+USE_REMOTE_EMBEDDINGS = os.getenv(
+    "USE_REMOTE_EMBEDDINGS",
+    "false"
+).lower() == "true"
 
-_model = SentenceTransformer("all-MiniLM-L6-v2")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-print("Local embedding model loaded.")
+HF_MODEL_URL = (
+    "https://router.huggingface.co/"
+    "hf-inference/models/"
+    "sentence-transformers/all-MiniLM-L6-v2"
+    "/pipeline/feature-extraction"
+)
 
 
 # --------------------------------------------------
-# Lightweight wrapper
+# Local Embedding Model
 # --------------------------------------------------
 
-class LocalEmbeddingModel:
+_model = None
+
+
+def _load_local_model():
+
+    global _model
+
+    if _model is None:
+
+        from sentence_transformers import SentenceTransformer
+
+        print("Loading LOCAL embedding model...")
+
+        _model = SentenceTransformer(
+            "all-MiniLM-L6-v2"
+        )
+
+        print("Local embedding model loaded.")
+
+    return _model
+
+
+# --------------------------------------------------
+# Remote Embedding Model
+# --------------------------------------------------
+
+class RemoteEmbeddingModel:
 
     def encode(
         self,
@@ -26,37 +62,86 @@ class LocalEmbeddingModel:
         convert_to_tensor=False
     ):
 
-        return _model.encode(
+        is_single_string = isinstance(
             sentences,
-            batch_size=batch_size,
-            show_progress_bar=show_progress_bar,
-            convert_to_tensor=convert_to_tensor
+            str
         )
 
+        input_data = (
+            [sentences]
+            if is_single_string
+            else list(sentences)
+        )
+
+        headers = {}
+
+        if HF_TOKEN:
+            headers["Authorization"] = (
+                f"Bearer {HF_TOKEN}"
+            )
+
+        try:
+
+            response = requests.post(
+                HF_MODEL_URL,
+                headers=headers,
+                json={
+                    "inputs": input_data
+                },
+                timeout=60
+            )
+
+            if response.status_code == 503:
+
+                time.sleep(5)
+
+                response = requests.post(
+                    HF_MODEL_URL,
+                    headers=headers,
+                    json={
+                        "inputs": input_data
+                    },
+                    timeout=60
+                )
+
+            if response.status_code != 200:
+
+                raise RuntimeError(
+                    f"Hugging Face embedding API failed: "
+                    f"{response.status_code} "
+                    f"{response.text}"
+                )
+
+            result = response.json()
+
+            return (
+                result[0]
+                if is_single_string
+                else result
+            )
+
+        except Exception as e:
+
+            raise RuntimeError(
+                f"Embedding generation failed: {e}"
+            )
+
 
 # --------------------------------------------------
-# Shared model
+# Shared Model
 # --------------------------------------------------
 
-model = LocalEmbeddingModel()
+_remote_model = RemoteEmbeddingModel()
 
 
 def get_embedding_model():
-    return model
 
+    if USE_REMOTE_EMBEDDINGS:
 
-# --------------------------------------------------
-# Embedding Service
-# --------------------------------------------------
+        print(
+            "Using REMOTE Hugging Face embedding model..."
+        )
 
-class EmbeddingService:
+        return _remote_model
 
-    def __init__(self):
-        self.model = model
-
-    def get_embeddings(self, text):
-        return self.model.encode(text)
-
-    @classmethod
-    def get_model(cls):
-        return model
+    return _load_local_model()

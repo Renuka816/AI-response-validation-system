@@ -1,6 +1,7 @@
 from pathlib import Path
 import chromadb
-from sentence_transformers import SentenceTransformer
+
+from backend.utils.embedding_model import get_embedding_model
 
 
 # --------------------------------------------------
@@ -26,7 +27,7 @@ _collection = None
 
 
 # --------------------------------------------------
-# Load LOCAL embedding model
+# Load embedding model
 # --------------------------------------------------
 
 def get_model():
@@ -35,13 +36,11 @@ def get_model():
 
     if _model is None:
 
-        print("Loading LOCAL embedding model...")
+        print("Loading remote embedding service...")
 
-        _model = SentenceTransformer(
-            "all-MiniLM-L6-v2"
-        )
+        _model = get_embedding_model()
 
-        print("Local embedding model loaded.")
+        print("Remote embedding service ready.")
 
     return _model
 
@@ -90,9 +89,15 @@ def retrieve_documents(
     # ----------------------------------------------
 
     query_embedding = model.encode(
-        question,
-        convert_to_numpy=True
-    ).tolist()
+        question
+    )
+
+    # ----------------------------------------------
+    # Handle single embedding
+    # ----------------------------------------------
+
+    if hasattr(query_embedding, "tolist"):
+        query_embedding = query_embedding.tolist()
 
     # ----------------------------------------------
     # Search ChromaDB

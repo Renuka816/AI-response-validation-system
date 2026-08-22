@@ -1,72 +1,18 @@
-from sentence_transformers import SentenceTransformer
+from backend.utils.embedding_model import get_embedding_model
 
 
-# ============================
-# Local Embedding Model
-# ============================
+def get_embedding_model_service():
+    return get_embedding_model()
 
-MODEL_NAME = "all-MiniLM-L6-v2"
-
-print("Loading local embedding model...")
-
-model = SentenceTransformer(MODEL_NAME)
-
-print("Local embedding model loaded.")
-
-
-# ============================
-# Embedding Model
-# ============================
-
-class LocalEmbeddingModel:
-
-    def encode(
-        self,
-        sentences,
-        batch_size=32,
-        show_progress_bar=False,
-        convert_to_tensor=False
-    ):
-
-        return model.encode(
-            sentences,
-            batch_size=batch_size,
-            show_progress_bar=show_progress_bar,
-            convert_to_tensor=convert_to_tensor
-        )
-
-
-# ============================
-# Global Model
-# ============================
-
-local_model = LocalEmbeddingModel()
-
-
-# ============================
-# Get Embedding Model
-# ============================
-
-def get_embedding_model():
-
-    return local_model
-
-
-# ============================
-# Embedding Service
-# ============================
 
 class EmbeddingService:
 
+    @classmethod
+    def get_model(cls):
+        return get_embedding_model()
+
     def __init__(self):
-
-        self.model = local_model
-
-    @staticmethod
-    def get_model():
-
-        return local_model
+        self.model = get_embedding_model()
 
     def get_embeddings(self, text):
-
         return self.model.encode(text)
