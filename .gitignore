@@ -62,3 +62,5 @@ results/
 *.log
 .DS_Store
 Thumbs.db
+# Local ChromaDB generated during deployment/testing
+chroma_db_small/

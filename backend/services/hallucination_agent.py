@@ -28,7 +28,7 @@ class HallucinationAgent:
             }
 
         # =========================================================
-        # Load local embedding model
+        # Load embedding model
         # =========================================================
 
         model = EmbeddingService.get_model()
@@ -45,7 +45,7 @@ class HallucinationAgent:
 
             context = document.get("context", "")
 
-            if not context.strip():
+            if not context or not context.strip():
                 continue
 
             context_embedding = model.encode(context)
@@ -57,7 +57,10 @@ class HallucinationAgent:
 
             similarities.append(similarity)
 
+        # =========================================================
         # No usable documents
+        # =========================================================
+
         if not similarities:
 
             return {
@@ -73,6 +76,10 @@ class HallucinationAgent:
                 )
             }
 
+        # =========================================================
+        # Best evidence
+        # =========================================================
+
         best_similarity = max(similarities)
 
         similarity_percent = round(
@@ -80,12 +87,25 @@ class HallucinationAgent:
             2
         )
 
+        print(
+            "HALLUCINATION BEST SIMILARITY:",
+            best_similarity
+        )
+
+        print(
+            "HALLUCINATION SIMILARITY %:",
+            similarity_percent
+        )
+
         # =========================================================
+        # Very weak / irrelevant evidence
+        #
         # IMPORTANT:
-        # Weak evidence should NOT automatically mean hallucination.
+        # Do not call a response hallucinated just because the
+        # retriever returned unrelated documents.
         # =========================================================
 
-        if best_similarity < 0.40:
+        if best_similarity < 0.55:
 
             return {
                 "hallucination_score": 0.0,
