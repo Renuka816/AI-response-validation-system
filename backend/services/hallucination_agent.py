@@ -172,15 +172,14 @@ class HallucinationAgent:
 
             if detected_wrong_entity:
                 break
-
-        # -----------------------------------------------------
-        # HIGH-CONFIDENCE HALLUCINATION
+ # -----------------------------------------------------
+        # HIGH-CONFIDENCE HALLUCINATION (Inverted to represent Health)
         # -----------------------------------------------------
 
         if detected_wrong_entity:
 
             return {
-                "hallucination_score": 95.0,
+                "hallucination_score": 5.0, # Inverted from 95.0 (Low health score)
                 "hallucinated": True,
                 "status": "Hallucinated",
                 "supported_claims": 0,
@@ -204,7 +203,7 @@ class HallucinationAgent:
         if support_ratio >= 0.60:
 
             return {
-                "hallucination_score": 5.0,
+                "hallucination_score": 100.0, # Inverted from 5.0 (Perfect factual health)
                 "hallucinated": False,
                 "status": "Well Supported",
                 "supported_claims": 1,
@@ -226,7 +225,7 @@ class HallucinationAgent:
         if support_ratio >= 0.30:
 
             return {
-                "hallucination_score": 35.0,
+                "hallucination_score": 50.0, # Inverted from 35.0 (Average partial match)
                 "hallucinated": False,
                 "status": "Needs Verification",
                 "supported_claims": 1,
@@ -247,7 +246,7 @@ class HallucinationAgent:
         # -----------------------------------------------------
 
         return {
-            "hallucination_score": 70.0,
+            "hallucination_score": 20.0, # Inverted from 70.0 (Low health score)
             "hallucinated": True,
             "status": "Potential Hallucination",
             "supported_claims": 0,
@@ -259,10 +258,9 @@ class HallucinationAgent:
             "reason": (
                 "The response contains claims that could not "
                 "be sufficiently supported by the retrieved "
-                "knowledge base evidence."
+                "knowledge"
             )
         }
-
 
     # =========================================================
     # MAIN EVALUATION FUNCTION
