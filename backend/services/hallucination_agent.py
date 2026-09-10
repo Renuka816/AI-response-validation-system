@@ -1,4 +1,3 @@
-````python
 import json
 import re
 
@@ -482,4 +481,3 @@ Scoring:
                 ai_response,
                 retrieved_documents
             )
-````
