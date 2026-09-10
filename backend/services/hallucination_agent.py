@@ -1,12 +1,34 @@
-from sklearn.metrics.pairwise import cosine_similarity
+import json
+import re
 
-from backend.services.embedding_service import EmbeddingService
+from backend.services.llm_service import LLMService
 
 
 class HallucinationAgent:
 
     @staticmethod
-    def evaluate(ai_response: str, retrieved_documents: list):
+    def evaluate(
+        question: str,
+        ai_response: str,
+        retrieved_documents: list,
+        model_name="gpt-4o"
+    ):
+
+        # =========================================================
+        # Validate input
+        # =========================================================
+
+        if not ai_response or not ai_response.strip():
+
+            return {
+                "hallucination_score": 100.0,
+                "hallucinated": True,
+                "status": "Invalid Response",
+                "supported_claims": 0,
+                "unsupported_claims": 1,
+                "evidence": "No AI response was provided.",
+                "reason": "There is no response available to evaluate."
+            }
 
         # =========================================================
         # No retrieved evidence
@@ -17,211 +39,233 @@ class HallucinationAgent:
             return {
                 "hallucination_score": 0.0,
                 "hallucinated": False,
-                "status": "General Knowledge Grounded",
-                "supported_claims": 1,
+                "status": "Unable to Verify",
+                "supported_claims": 0,
                 "unsupported_claims": 0,
                 "evidence": "No retrieved evidence was available.",
                 "reason": (
-                    "No relevant retrieval evidence was available. "
-                    "The response was evaluated using general knowledge."
+                    "No relevant evidence was retrieved from the "
+                    "knowledge base, so hallucination could not be "
+                    "reliably determined."
                 )
             }
 
         # =========================================================
-        # Load embedding model
+        # Prepare retrieved evidence
         # =========================================================
 
-        model = EmbeddingService.get_model()
+        evidence_parts = []
 
-        response_embedding = model.encode(ai_response)
-
-        # =========================================================
-        # Compare response against retrieved evidence
-        # =========================================================
-
-        similarities = []
-
-        for document in retrieved_documents:
+        for i, document in enumerate(retrieved_documents, start=1):
 
             context = document.get("context", "")
 
-            if not context or not context.strip():
-                continue
+            if context and context.strip():
 
-            context_embedding = model.encode(context)
+                evidence_parts.append(
+                    f"Evidence {i}:\n{context.strip()}"
+                )
 
-            similarity = cosine_similarity(
-                [response_embedding],
-                [context_embedding]
-            )[0][0]
-
-            similarities.append(similarity)
-
-        # =========================================================
-        # No usable documents
-        # =========================================================
-
-        if not similarities:
+        if not evidence_parts:
 
             return {
                 "hallucination_score": 0.0,
                 "hallucinated": False,
-                "status": "General Knowledge Grounded",
-                "supported_claims": 1,
+                "status": "Unable to Verify",
+                "supported_claims": 0,
                 "unsupported_claims": 0,
-                "evidence": "No usable retrieved context.",
+                "evidence": "Retrieved documents contained no usable context.",
                 "reason": (
                     "The retrieved documents did not contain usable "
-                    "evidence, so the response was not penalized."
+                    "evidence for verification."
                 )
             }
 
-        # =========================================================
-        # Best evidence
-        # =========================================================
-
-        best_similarity = max(similarities)
-
-        similarity_percent = round(
-            best_similarity * 100,
-            2
-        )
-
-        print(
-            "HALLUCINATION BEST SIMILARITY:",
-            best_similarity
-        )
-
-        print(
-            "HALLUCINATION SIMILARITY %:",
-            similarity_percent
-        )
+        evidence = "\n\n".join(evidence_parts)
 
         # =========================================================
-        # Very weak / irrelevant evidence
-        #
-        # IMPORTANT:
-        # Do not call a response hallucinated just because the
-        # retriever returned unrelated documents.
+        # Limit evidence size
         # =========================================================
 
-        if best_similarity < 0.55:
+        evidence = evidence[:12000]
+
+        # =========================================================
+        # LLM hallucination evaluation
+        # =========================================================
+
+        prompt = f"""
+You are evaluating whether an AI-generated answer contains hallucinations.
+
+Your task is to compare the AI response ONLY against the retrieved
+reference evidence.
+
+Do NOT use your own general knowledge.
+
+A hallucination occurs when the AI response:
+
+1. Makes a factual claim that is contradicted by the evidence.
+2. Introduces a factual claim that is not supported by the evidence.
+3. Gives an incorrect entity, number, date, name, place, cause, or fact
+   when the evidence provides the correct information.
+
+A response can contain multiple claims.
+
+IMPORTANT:
+- Do not judge based only on wording similarity.
+- Check the actual meaning of the claims.
+- If the evidence says one entity is correct and the response replaces
+  it with another entity, mark that claim as unsupported or contradicted.
+- If the response is fully supported by the evidence, hallucination_score
+  should be 0.
+- If the response contains clearly false or unsupported claims,
+  hallucination_score should be high.
+- Do not assume that a response is correct merely because it sounds
+  similar to the evidence.
+
+Question:
+{question}
+
+AI Response:
+{ai_response}
+
+Retrieved Reference Evidence:
+{evidence}
+
+Return ONLY valid JSON in exactly this structure:
+
+{{
+    "hallucination_score": 0,
+    "hallucinated": false,
+    "supported_claims": 0,
+    "unsupported_claims": 0,
+    "status": "Well Supported",
+    "reason": "Brief explanation based only on the evidence.",
+    "evidence": "Brief evidence used for the decision."
+}}
+
+Scoring guidance:
+
+0-10:
+Fully or almost fully supported.
+
+11-30:
+Minor unsupported detail, but mostly supported.
+
+31-60:
+Some unsupported or questionable claims.
+
+61-80:
+Significant unsupported or contradictory claims.
+
+81-100:
+Clearly hallucinated or substantially contradicted by the evidence.
+"""
+
+        try:
+
+            raw_result = LLMService.generate(
+                prompt,
+                model_name=model_name
+            )
+
+            # =====================================================
+            # Clean JSON returned by LLM
+            # =====================================================
+
+            cleaned_result = raw_result.strip()
+
+            cleaned_result = re.sub(
+                r"^```json\s*",
+                "",
+                cleaned_result,
+                flags=re.IGNORECASE
+            )
+
+            cleaned_result = re.sub(
+                r"^```\s*",
+                "",
+                cleaned_result
+            )
+
+            cleaned_result = re.sub(
+                r"\s*```$",
+                "",
+                cleaned_result
+            )
+
+            result = json.loads(cleaned_result)
+
+            # =====================================================
+            # Validate values
+            # =====================================================
+
+            hallucination_score = float(
+                result.get("hallucination_score", 0)
+            )
+
+            hallucination_score = max(
+                0.0,
+                min(100.0, hallucination_score)
+            )
+
+            hallucinated = bool(
+                result.get(
+                    "hallucinated",
+                    hallucination_score >= 50
+                )
+            )
+
+            supported_claims = int(
+                result.get("supported_claims", 0)
+            )
+
+            unsupported_claims = int(
+                result.get("unsupported_claims", 0)
+            )
+
+            status = result.get(
+                "status",
+                "Needs Verification"
+            )
+
+            reason = result.get(
+                "reason",
+                "The response was evaluated against retrieved evidence."
+            )
+
+            evidence_result = result.get(
+                "evidence",
+                "Retrieved knowledge base evidence was used."
+            )
+
+            return {
+                "hallucination_score": round(
+                    hallucination_score,
+                    2
+                ),
+                "hallucinated": hallucinated,
+                "status": status,
+                "supported_claims": supported_claims,
+                "unsupported_claims": unsupported_claims,
+                "evidence": evidence_result,
+                "reason": reason
+            }
+
+        except Exception as e:
+
+            print(
+                "HALLUCINATION AGENT ERROR:",
+                str(e)
+            )
 
             return {
                 "hallucination_score": 0.0,
                 "hallucinated": False,
-                "status": "General Knowledge Grounded",
-                "supported_claims": 1,
+                "status": "Evaluation Error",
+                "supported_claims": 0,
                 "unsupported_claims": 0,
-                "evidence": (
-                    f"Retrieved evidence had low semantic support "
-                    f"({similarity_percent}%)."
-                ),
+                "evidence": "LLM evaluation could not be completed.",
                 "reason": (
-                    "The retrieved documents were not sufficiently "
-                    "relevant to verify the response. Therefore, "
-                    "the response was not classified as hallucinated."
+                    f"Hallucination evaluation failed: {str(e)}"
                 )
             }
-
-        # =========================================================
-        # Strong evidence
-        # =========================================================
-
-        if best_similarity >= 0.70:
-
-            return {
-                "hallucination_score": 0.0,
-                "hallucinated": False,
-                "status": "Well Supported",
-                "supported_claims": 5,
-                "unsupported_claims": 0,
-                "evidence": (
-                    f"Strong semantic support from retrieved knowledge "
-                    f"({similarity_percent}%)."
-                ),
-                "reason": (
-                    "The response is strongly supported by the "
-                    "retrieved knowledge."
-                )
-            }
-
-        # =========================================================
-        # Moderate evidence
-        # =========================================================
-
-        if best_similarity >= 0.55:
-
-            hallucination_score = round(
-                (1 - best_similarity) * 50,
-                2
-            )
-
-            return {
-                "hallucination_score": hallucination_score,
-                "hallucinated": False,
-                "status": "Mostly Supported",
-                "supported_claims": 4,
-                "unsupported_claims": 1,
-                "evidence": (
-                    f"Moderate semantic support from retrieved "
-                    f"knowledge ({similarity_percent}%)."
-                ),
-                "reason": (
-                    "The response has reasonable support from "
-                    "the retrieved knowledge, although some claims "
-                    "could not be directly verified."
-                )
-            }
-
-        # =========================================================
-        # Partial evidence
-        # =========================================================
-
-        hallucination_score = round(
-            (1 - best_similarity) * 100,
-            2
-        )
-
-        hallucination_score = max(
-            0,
-            min(100, hallucination_score)
-        )
-
-        if hallucination_score < 40:
-
-            status = "Partially Supported"
-            hallucinated = False
-            supported_claims = 3
-            unsupported_claims = 2
-
-            reason = (
-                "The response is partially supported by the "
-                "retrieved knowledge, but some claims require "
-                "additional verification."
-            )
-
-        else:
-
-            status = "Potentially Hallucinated"
-            hallucinated = True
-            supported_claims = 1
-            unsupported_claims = 4
-
-            reason = (
-                "The response has weak support from the available "
-                "retrieved knowledge and may contain unsupported claims."
-            )
-
-        return {
-            "hallucination_score": hallucination_score,
-            "hallucinated": hallucinated,
-            "status": status,
-            "supported_claims": supported_claims,
-            "unsupported_claims": unsupported_claims,
-            "evidence": (
-                f"Best semantic similarity with retrieved knowledge: "
-                f"{similarity_percent}%"
-            ),
-            "reason": reason
-        }

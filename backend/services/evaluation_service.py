@@ -55,9 +55,11 @@ class EvaluationService:
         # =====================================================
 
         hallucination_result = HallucinationAgent.evaluate(
-            request.response,
-            retrieved_docs
-        )
+    question=request.question,
+    ai_response=request.response,
+    retrieved_documents=retrieved_docs,
+    model_name="gpt-4o"
+)
 
         # =====================================================
         # 4. RELEVANCE EVALUATION
