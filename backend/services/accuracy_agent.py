@@ -8,18 +8,17 @@ from backend.services.llm_service import LLMService
 class AccuracyAgent:
 
     # =============================================================
-    # HIGH-CONFIDENCE DEMO CONTRADICTIONS
+    # HIGH-CONFIDENCE DEMO CONTRADICTION CHECK
     # =============================================================
     #
-    # These are aligned with the factual checks used by the
-    # HallucinationAgent.
+    # These checks are used only when the retrieved evidence clearly
+    # supports a known correct entity and the response explicitly
+    # contains a known incorrect entity.
     #
-    # They are NOT the main accuracy mechanism.
-    # GPT + RAG evidence remain the primary evaluation mechanism.
-    #
-    # These checks make sure that an explicitly known contradiction
-    # cannot accidentally receive a high accuracy score.
-    #
+    # GPT remains the primary evaluator.
+    # This acts as a safety layer so an obvious contradiction cannot
+    # incorrectly receive a high accuracy score.
+    # =============================================================
 
     KNOWN_WRONG_ANSWERS = {
 
@@ -67,6 +66,20 @@ class AccuracyAgent:
         documents=None,
         model_name="gpt-4o"
     ):
+        """
+        Evaluates factual accuracy of an AI-generated response
+        against evidence retrieved from the RAG/ChromaDB knowledge base.
+
+        Accuracy considers:
+        1. Whether claims are supported by retrieved evidence.
+        2. Whether the response contradicts the evidence.
+        3. Whether the response answers the question.
+        4. Whether unsupported factual claims are introduced.
+
+        GPT is used as the main evaluator.
+        A local high-confidence contradiction check prevents
+        obvious contradictions from receiving an incorrectly high score.
+        """
 
         # ---------------------------------------------------------
         # 1. INPUT VALIDATION
@@ -147,41 +160,59 @@ class AccuracyAgent:
         # 4. HIGH-CONFIDENCE LOCAL CONTRADICTION CHECK
         # ---------------------------------------------------------
         #
-        # IMPORTANT:
-        #
-        # This happens BEFORE asking GPT.
+        # This happens BEFORE GPT evaluation.
         #
         # Example:
         #
         # Evidence:
-        # Plasmodium falciparum
+        #   Plasmodium falciparum
         #
         # Response:
-        # Escherichia coli causes malaria.
+        #   Escherichia coli causes malaria.
         #
-        # The response contains a known incorrect entity while
-        # the evidence contains the expected entity.
-        #
-        # Therefore accuracy MUST NOT be allowed to remain high.
-        #
+        # The response contains an explicitly known wrong entity.
+        # Therefore accuracy must be low.
+        # ---------------------------------------------------------
 
-        local_contradiction = AccuracyAgent._detect_known_contradiction(
-            response,
-            evidence
-        )
+        evidence_lower = evidence.lower()
+        response_lower = response.lower()
 
-        if local_contradiction:
+        detected_wrong_entity = None
+        expected_entity = None
 
-            expected_answer = local_contradiction["expected"]
-            wrong_answer = local_contradiction["wrong"]
+        for correct_answer, wrong_answers in (
+            AccuracyAgent.KNOWN_WRONG_ANSWERS.items()
+        ):
+
+            # Only apply this rule if the correct answer is actually
+            # present in the retrieved evidence.
+
+            if correct_answer in evidence_lower:
+
+                for wrong_answer in wrong_answers:
+
+                    if wrong_answer in response_lower:
+
+                        detected_wrong_entity = wrong_answer
+                        expected_entity = correct_answer
+                        break
+
+            if detected_wrong_entity:
+                break
+
+        # ---------------------------------------------------------
+        # 5. RETURN HIGH-CONFIDENCE INACCURACY
+        # ---------------------------------------------------------
+
+        if detected_wrong_entity:
 
             return {
-                "accuracy_score": 10.0,
+                "accuracy_score": 5.0,
                 "reason": (
-                    f"The response contains the incorrect factual claim "
-                    f"'{wrong_answer}', while the retrieved evidence "
-                    f"supports '{expected_answer}'. Therefore the response "
-                    f"is factually inaccurate."
+                    f"The AI response claims '{detected_wrong_entity}', "
+                    f"but the retrieved evidence supports "
+                    f"'{expected_entity}'. Therefore the response "
+                    f"contains a direct factual contradiction."
                 ),
                 "verdict": "Inaccurate",
                 "contradiction": True,
@@ -189,30 +220,18 @@ class AccuracyAgent:
             }
 
         # ---------------------------------------------------------
-        # 5. BUILD GPT ACCURACY PROMPT
+        # 6. BUILD STRICT GPT EVALUATION PROMPT
         # ---------------------------------------------------------
 
         prompt = f"""
-You are an Accuracy Evaluation Agent for an AI Response Validation System.
+You are the Accuracy Evaluation Agent for an AI Response Validation System.
 
-Your task is to evaluate ONLY the factual accuracy of the AI-generated
-response against the retrieved reference evidence.
+Your ONLY task is to evaluate the factual accuracy of the AI response
+against the retrieved reference evidence.
 
-IMPORTANT RULES:
-
-1. Treat the retrieved evidence as the primary reference.
-2. Do NOT give a high score merely because the response sounds plausible.
-3. Compare the factual claims in the response with the evidence.
-4. If the response contradicts the evidence, mark it inaccurate.
-5. If the response introduces unsupported factual claims, reduce the score.
-6. If some claims are correct and some are incorrect, give a partial score.
-7. If the main answer is factually wrong, the score should be low.
-8. Do NOT use your own world knowledge to override the retrieved evidence.
-9. An explicit factual contradiction must NEVER receive a score of 100.
-10. If the response gives the opposite or a clearly different factual
-    answer from the evidence, classify it as Inaccurate.
-11. The score must be between 0 and 100.
-12. Return ONLY valid JSON.
+Do NOT judge writing quality.
+Do NOT reward the answer merely because it sounds convincing.
+Do NOT use your own world knowledge to override the retrieved evidence.
 
 QUESTION:
 {question}
@@ -223,19 +242,76 @@ AI RESPONSE:
 RETRIEVED REFERENCE EVIDENCE:
 {evidence}
 
+IMPORTANT EVALUATION RULES:
+
+1. The retrieved evidence is the primary reference.
+
+2. Every important factual claim in the AI response must be checked
+   against the retrieved evidence.
+
+3. If the AI response directly contradicts the retrieved evidence,
+   the response is INACCURATE.
+
+4. If even one important factual claim directly contradicts the
+   evidence, do NOT give a score of 100.
+
+5. If the main answer is wrong, the accuracy score should normally
+   be between 0 and 30.
+
+6. If the response contains both correct and incorrect factual claims,
+   give a partial score.
+
+7. If the response contains unsupported factual claims, reduce the
+   score.
+
+8. A response must NOT receive 100 if it contains a factual
+   contradiction.
+
+9. Do not assume that an unsupported claim is correct simply because
+   it is plausible.
+
+10. If the evidence clearly says X and the response says Y, where X
+    and Y are contradictory answers, mark the response inaccurate.
+
+11. The score must be between 0 and 100.
+
+12. Return ONLY valid JSON.
+
+Use this scoring guidance:
+
+90-100:
+Fully supported by the retrieved evidence with no meaningful
+contradictions or unsupported factual claims.
+
+70-89:
+Mostly accurate, but contains a minor unsupported detail or
+small omission.
+
+40-69:
+Partially accurate. Some claims are supported while other
+claims cannot be verified or are incorrect.
+
+10-39:
+Mostly inaccurate. The main answer contains incorrect or
+contradictory information.
+
+0-9:
+Completely unsupported or directly contradictory to the
+retrieved evidence.
+
 Return exactly:
 
 {{
     "accuracy_score": number,
     "verdict": "Accurate" or "Partially Accurate" or "Inaccurate",
-    "reason": "short explanation",
+    "reason": "short explanation based only on retrieved evidence",
     "contradiction": true or false,
     "unsupported_claims": number
 }}
 """
 
         # ---------------------------------------------------------
-        # 6. GPT EVALUATION
+        # 7. GPT EVALUATION
         # ---------------------------------------------------------
 
         try:
@@ -246,7 +322,7 @@ Return exactly:
             )
 
             # -----------------------------------------------------
-            # 7. PARSE RESULT
+            # 8. PARSE GPT RESPONSE
             # -----------------------------------------------------
 
             if isinstance(result, dict):
@@ -256,6 +332,8 @@ Return exactly:
             else:
 
                 raw_text = str(result).strip()
+
+                # Remove markdown JSON fences.
 
                 raw_text = re.sub(
                     r"^```json\s*|\s*```$",
@@ -267,7 +345,7 @@ Return exactly:
                 raw_result = json.loads(raw_text)
 
             # -----------------------------------------------------
-            # 8. EXTRACT SCORE
+            # 9. EXTRACT SCORE
             # -----------------------------------------------------
 
             score = raw_result.get(
@@ -289,7 +367,7 @@ Return exactly:
             )
 
             # -----------------------------------------------------
-            # 9. EXTRACT OTHER FIELDS
+            # 10. EXTRACT OTHER VALUES
             # -----------------------------------------------------
 
             contradiction = bool(
@@ -324,144 +402,72 @@ Return exactly:
                 "Accurate"
             )
 
-            # -----------------------------------------------------
-            # 10. NORMALIZE VERDICT
-            # -----------------------------------------------------
-
             verdict_lower = str(
                 verdict
             ).strip().lower()
 
-            # -----------------------------------------------------
+            # ---------------------------------------------------------
             # 11. SAFETY CORRECTIONS
-            # -----------------------------------------------------
+            # ---------------------------------------------------------
             #
-            # These prevent GPT from producing logically inconsistent
-            # results such as:
-            #
-            # contradiction = true
-            # accuracy = 100
-            #
-            # or:
-            #
-            # verdict = inaccurate
-            # accuracy = 100
-            #
+            # Prevent obviously inconsistent results.
+            # ---------------------------------------------------------
+
+            # Explicit contradiction can NEVER be 100.
 
             if contradiction:
 
-                score = min(
-                    score,
-                    25.0
-                )
+                if score > 30:
+
+                    score = 20.0
 
                 verdict = "Inaccurate"
 
-                if "contradiction" not in str(reason).lower():
-
-                    reason = (
-                        str(reason)
-                        + " The response contradicts the retrieved evidence."
-                    )
-
-            # -----------------------------------------------------
-            # UNSUPPORTED CLAIM CORRECTION
-            # -----------------------------------------------------
-
-            if unsupported_claims >= 2:
-
-                score = min(
-                    score,
-                    45.0
+                reason = (
+                    str(reason)
+                    + " The response contains a contradiction "
+                      "with the retrieved evidence."
                 )
 
-                if verdict_lower == "accurate":
+            # Unsupported factual claims cannot have perfect accuracy.
+
+            elif unsupported_claims > 0:
+
+                if score >= 100:
+
+                    score = 70.0
+
+                if score < 40:
+
+                    verdict = "Inaccurate"
+
+                else:
 
                     verdict = "Partially Accurate"
 
-            elif unsupported_claims == 1:
-
-                score = min(
-                    score,
-                    70.0
-                )
-
-                if verdict_lower == "accurate" and score < 80:
-
-                    verdict = "Partially Accurate"
-
-            # -----------------------------------------------------
-            # VERDICT-BASED CORRECTION
-            # -----------------------------------------------------
+            # GPT itself says inaccurate.
 
             if verdict_lower == "inaccurate":
 
-                score = min(
-                    score,
-                    30.0
-                )
+                if score > 30:
+
+                    score = 20.0
 
                 verdict = "Inaccurate"
+
+            # GPT says partially accurate.
 
             elif verdict_lower == "partially accurate":
 
-                score = min(
-                    score,
-                    75.0
-                )
+                if score >= 90:
+
+                    score = 70.0
 
                 verdict = "Partially Accurate"
 
-            else:
-
-                verdict = "Accurate"
-
-            # -----------------------------------------------------
-            # 12. SECOND LOCAL CONTRADICTION CHECK
-            # -----------------------------------------------------
-            #
-            # This is done AFTER GPT as well.
-            #
-            # It protects against a GPT response such as:
-            #
-            # accuracy_score = 83
-            # contradiction = false
-            #
-            # when the response actually contains a known wrong entity.
-            #
-
-            post_check = AccuracyAgent._detect_known_contradiction(
-                response,
-                evidence
-            )
-
-            if post_check:
-
-                expected_answer = post_check["expected"]
-                wrong_answer = post_check["wrong"]
-
-                score = min(
-                    score,
-                    10.0
-                )
-
-                verdict = "Inaccurate"
-                contradiction = True
-                unsupported_claims = max(
-                    unsupported_claims,
-                    1
-                )
-
-                reason = (
-                    f"The response contains the incorrect factual claim "
-                    f"'{wrong_answer}', while the retrieved evidence "
-                    f"supports '{expected_answer}'. Therefore the response "
-                    f"is factually inaccurate."
-                )
-
-            # -----------------------------------------------------
-            # 13. FINAL RETURN
-            # -----------------------------------------------------
+            # ---------------------------------------------------------
+            # 12. FINAL RETURN
+            # ---------------------------------------------------------
 
             return {
                 "accuracy_score": round(
@@ -475,10 +481,19 @@ Return exactly:
             }
 
         # ---------------------------------------------------------
-        # 14. ERROR HANDLING
+        # 13. FALLBACK
         # ---------------------------------------------------------
 
         except Exception as e:
+
+            print(
+                "ACCURACY LLM ERROR:",
+                str(e)
+            )
+
+            print(
+                "Using LOCAL accuracy fallback..."
+            )
 
             return AccuracyAgent._fallback_accuracy(
                 question,
@@ -486,52 +501,6 @@ Return exactly:
                 evidence,
                 str(e)
             )
-
-    # =============================================================
-    # KNOWN CONTRADICTION DETECTOR
-    # =============================================================
-
-    @staticmethod
-    def _detect_known_contradiction(
-        response,
-        evidence
-    ):
-        """
-        Detects high-confidence factual contradictions.
-
-        Returns:
-            {
-                "expected": correct entity,
-                "wrong": incorrect entity
-            }
-
-        or None.
-        """
-
-        response_lower = response.lower()
-        evidence_lower = evidence.lower()
-
-        for correct_answer, wrong_answers in (
-            AccuracyAgent.KNOWN_WRONG_ANSWERS.items()
-        ):
-
-            # The expected answer must actually appear in
-            # retrieved evidence.
-
-            if correct_answer not in evidence_lower:
-
-                continue
-
-            for wrong_answer in wrong_answers:
-
-                if wrong_answer in response_lower:
-
-                    return {
-                        "expected": correct_answer,
-                        "wrong": wrong_answer
-                    }
-
-        return None
 
     # =============================================================
     # FALLBACK ACCURACY CHECK
@@ -545,43 +514,11 @@ Return exactly:
         error_message=None
     ):
         """
-        Conservative local accuracy evaluation used when GPT
-        evaluation fails.
+        Conservative local fallback when GPT evaluation fails.
 
-        Word overlap alone is NOT treated as proof of accuracy.
+        This checks textual overlap with the retrieved evidence.
+        It does not claim that overlap guarantees factual correctness.
         """
-
-        # ---------------------------------------------------------
-        # First check for known contradiction.
-        # ---------------------------------------------------------
-
-        contradiction = AccuracyAgent._detect_known_contradiction(
-            response,
-            evidence
-        )
-
-        if contradiction:
-
-            return {
-                "accuracy_score": 10.0,
-                "reason": (
-                    f"The response contains the incorrect claim "
-                    f"'{contradiction['wrong']}', while the retrieved "
-                    f"evidence supports '{contradiction['expected']}'."
-                    + (
-                        " LLM evaluation fallback was used."
-                        if error_message
-                        else ""
-                    )
-                ),
-                "verdict": "Inaccurate",
-                "contradiction": True,
-                "unsupported_claims": 1
-            }
-
-        # ---------------------------------------------------------
-        # Token extraction
-        # ---------------------------------------------------------
 
         question_words = set(
             re.findall(
@@ -604,10 +541,6 @@ Return exactly:
             )
         )
 
-        # ---------------------------------------------------------
-        # No evidence
-        # ---------------------------------------------------------
-
         if not evidence_words:
 
             return {
@@ -622,98 +555,43 @@ Return exactly:
             }
 
         # ---------------------------------------------------------
-        # Remove common words
+        # Response/evidence overlap
         # ---------------------------------------------------------
 
-        stop_words = {
-            "the", "is", "are", "was", "were",
-            "a", "an", "and", "or", "of", "to",
-            "in", "on", "for", "with", "by",
-            "from", "as", "that", "this", "it",
-            "its", "be", "has", "have", "had",
-            "does", "do", "did", "what", "which",
-            "who", "how", "when", "where", "why",
-            "can", "could", "may", "might",
-            "will", "would"
-        }
+        response_evidence_overlap = (
+            len(response_words & evidence_words)
+            / max(len(response_words), 1)
+        )
 
-        meaningful_response_words = {
-            word
-            for word in response_words
-            if word not in stop_words
-            and len(word) > 2
-        }
-
-        meaningful_evidence_words = {
-            word
-            for word in evidence_words
-            if word not in stop_words
-            and len(word) > 2
-        }
+        question_response_overlap = (
+            len(question_words & response_words)
+            / max(len(question_words), 1)
+        )
 
         # ---------------------------------------------------------
-        # Evidence overlap
+        # Conservative scoring
         # ---------------------------------------------------------
 
-        if not meaningful_response_words:
-
-            response_evidence_overlap = 0.0
-
-        else:
-
-            response_evidence_overlap = (
-                len(
-                    meaningful_response_words
-                    & meaningful_evidence_words
-                )
-                / len(meaningful_response_words)
-            )
-
-        # ---------------------------------------------------------
-        # Question-response relationship
-        # ---------------------------------------------------------
-
-        if not question_words:
-
-            question_response_overlap = 0.0
-
-        else:
-
-            question_response_overlap = (
-                len(
-                    question_words
-                    & response_words
-                )
-                / len(question_words)
-            )
-
-        # ---------------------------------------------------------
-        # Conservative fallback scoring
-        # ---------------------------------------------------------
-
-        if response_evidence_overlap >= 0.70:
+        if response_evidence_overlap >= 0.60:
 
             score = 80.0
 
             reason = (
                 "The response has substantial overlap with the "
-                "retrieved reference evidence. However, the local "
-                "fallback cannot guarantee complete factual accuracy."
+                "retrieved reference evidence, but automatic "
+                "fallback verification cannot guarantee complete "
+                "factual accuracy."
             )
 
-            verdict = "Accurate"
+        elif response_evidence_overlap >= 0.30:
 
-        elif response_evidence_overlap >= 0.40:
-
-            score = 60.0
+            score = 55.0
 
             reason = (
                 "The response partially overlaps with the retrieved "
-                "reference evidence, but some claims could not be "
-                "fully verified."
+                "reference evidence, but some claims could not "
+                "be verified."
             )
-
-            verdict = "Partially Accurate"
 
         elif question_response_overlap < 0.10:
 
@@ -724,8 +602,6 @@ Return exactly:
                 "or retrieved reference evidence."
             )
 
-            verdict = "Inaccurate"
-
         else:
 
             score = 30.0
@@ -735,16 +611,23 @@ Return exactly:
                 "against the retrieved reference evidence."
             )
 
-            verdict = "Inaccurate"
-
         if error_message:
 
-            reason += " LLM evaluation fallback was used."
+            reason += (
+                " LLM evaluation fallback was used."
+            )
 
         return {
             "accuracy_score": score,
             "reason": reason,
-            "verdict": verdict,
+            "verdict": (
+                "Accurate"
+                if score >= 80
+                else "Partially Accurate"
+                if score >= 50
+                else "Inaccurate"
+            ),
             "contradiction": False,
             "unsupported_claims": 0
         }
+
